@@ -1,0 +1,11 @@
+{
+	"name": "PingPong",
+	"version": "0.1.0",
+	"dependencies": {
+		"async": "latest",
+		"express": "latest",
+		"jsdom": "latest",
+		"sockjs": "latest",
+		"underscore": "latest"
+	}
+}
