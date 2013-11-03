@@ -21,10 +21,10 @@
         };
 
         sockjs.onmessage = function (e) {
-            console.log('[.] received ' + JSON.stringify(e.data));
+            console.log('[.] received ' + e.data);
             var dataObj = JSON.parse(e.data);
             if (typeof dataObj === "undefined" || dataObj === null) {
-                return;
+                console.log('Error parsing data from server!');
             }
             // Further data processing ...
         };
