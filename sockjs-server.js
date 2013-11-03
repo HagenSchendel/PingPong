@@ -1,3 +1,5 @@
+"use strict";
+
 /**
  * Configure a static web content server using ExpressJS (http://expressjs.com).
  * Static content is served from the directory '/www'.
