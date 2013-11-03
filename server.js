@@ -15,18 +15,18 @@ var connectedClients = [];
  * this case after all clients have been updated.
  * @type {Function}
  */
-var updateClients;
+var updatedClient;
 
 function update(client) {
-    console.log('emit to client %s', client.id);
+    console.log('Emit to client %s.', client.id);
 
     client.write(JSON.stringify({message: 'Ping'}));
 
-    updateClients();
+    updatedClient();
 }
 
 function updateFinished() {
-    console.log('done emitting data to all clients');
+    console.log('Done emitting data to all clients.');
 }
 
 var config = {host: '0.0.0.0', port: 1337, prefix: '/data'};
@@ -35,10 +35,10 @@ sockjsServer.start(config, function (sockjs) {
     sockjs.on('connection', function (connection) {
         connectedClients.push(connection);
 
-        updateClients = _.after(connectedClients.length, updateFinished);
+        updatedClient = _.after(connectedClients.length, updateFinished);
 
         connection.on('data', function (data) {
-            console.log('Received data: %s', JSON.stringify(data));
+            console.log('Received data: %s.', data);
             _.each(connectedClients, update);
         });
     });
