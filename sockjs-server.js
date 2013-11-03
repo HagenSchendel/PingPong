@@ -43,8 +43,6 @@ exports.start = function (config, callback) {
             attachSockJsToHttpServer(httpServer, config.prefix,
                 function (sockjsServer) {
                     httpServer.listen(config.port, config.host);
-                    console.log(' [*] Listening on %s:%s',
-                        config.host, config.port);
                     callback(sockjsServer);
                 });
         });

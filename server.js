@@ -32,6 +32,8 @@ function updateFinished() {
 var config = {host: '0.0.0.0', port: 1337, prefix: '/data'};
 
 sockjsServer.start(config, function (sockjs) {
+    console.log('[*] Listening on %s:%s', config.host, config.port);
+
     sockjs.on('connection', function (connection) {
         connectedClients.push(connection);
 
