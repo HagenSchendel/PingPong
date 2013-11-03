@@ -57,11 +57,9 @@ sockjsServer.on('connection', function (connection) {
 
 var update = function (client) {
     util.log("emit to client " + client.id);
-    try {
-        client.write(JSON.stringify({ message: "Ping"}));
-    } catch (err) {
-        util.log(err);
-    }
+
+    client.write(JSON.stringify({ message: "Ping"}));
+
     updateClients();
 };
 
