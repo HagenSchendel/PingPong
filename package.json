@@ -4,7 +4,6 @@
 	"dependencies": {
 		"async": "latest",
 		"express": "latest",
-		"jsdom": "latest",
 		"sockjs": "latest",
 		"underscore": "latest"
 	}
