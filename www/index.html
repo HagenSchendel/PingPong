@@ -2,13 +2,15 @@
 <html lang="en">
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <title>tankr.js</title>
+  <title>PingPong</title>
   <script type="text/javascript" src="json2.js"></script>
   <script type="text/javascript" src="http://cdn.sockjs.org/sockjs-0.3.min.js"></script>
   <script type="text/javascript" src="pingpong.js"></script>
 </head>
-<body onload="main();">
-  <canvas id="pane" width="640" height="480">
+<body id="body" onload="clientMain();">
+  <canvas id="pane" width="640" height="500">
   </canvas>
+  <br/>
+  <button id="btnJoin">Join Game</button>
 </body>
 </html>
