@@ -1,6 +1,6 @@
 "use strict";
 
-var _ = require('underscore');
+var _ = require('lodash');
 var sockjsServer = require('./sockjs-server');
 
 /**
