@@ -5,6 +5,6 @@
 		"async": "latest",
 		"express": "latest",
 		"sockjs": "latest",
-		"underscore": "latest"
+		"lodash": "latest"
 	}
 }
