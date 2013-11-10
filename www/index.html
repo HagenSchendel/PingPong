@@ -4,7 +4,7 @@
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <title>PingPong</title>
   <script type="text/javascript" src="json2.js"></script>
-  <script type="text/javascript" src="http://cdn.sockjs.org/sockjs-0.3.min.js"></script>
+  <script type="text/javascript" src="sockjs-0.3.min.js"></script>
   <script type="text/javascript" src="pingpong.js"></script>
 </head>
 <body id="body" onload="clientMain();">
@@ -12,5 +12,29 @@
   </canvas>
   <br/>
   <button id="btnJoin">Join Game</button>
+    <!--
+    <script type="text/javascript">
+        var sockjsUrl = '/data';
+        var sockjs = new SockJS(sockjsUrl);
+
+        sockjs.onopen = function () {
+            console.log('[*] open ' + JSON.stringify(sockjs.protocol));
+
+            sockjs.send('client connected');
+        };
+
+        sockjs.onclose = function () {
+            console.log('[*] close');
+        };
+
+        sockjs.onmessage = function (e) {
+            console.log('[.] received ' + e.data);
+            var dataObj = JSON.parse(e.data);
+            if (typeof dataObj === "undefined" || dataObj === null) {
+                console.log('Error parsing data from server!');
+            }
+            // Further data processing ...
+        };
+    </script>-->
 </body>
 </html>

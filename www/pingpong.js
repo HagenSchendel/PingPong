@@ -1,17 +1,22 @@
+var SOCK_URL_PREFIX = '/data';
 
 var PI2 = Math.PI * 2.0;
 var PIH = Math.PI * 0.5;
 
-var INTERVAL_MS = 20;
+var FPS = 60;
+var INTERVAL_MS = 1000.0 / FPS;
+var SKIP_DRAW_THRESHOLD_MS = INTERVAL_MS + 2;
 var MESSAGE_DURATION_MS = 2000;
-var PADDLE_INC = 1 / INTERVAL_MS;
-var BALL_INC = 1 / INTERVAL_MS;
+var PADDLE_INC = 150 / 1000;
+var BALL_INC = 140 / 1000;
 var FIELD_WIDTH = 640;
 var FIELD_HEIGHT = 480;
 var PADDLE_HEIGHT = 10;
 var PADDLE_HEIGHT_H = PADDLE_HEIGHT * 0.5;
-var PADDLE_WIDTH = 30;
+var PADDLE_WIDTH = 50;
 var PADDLE_WIDTH_H = PADDLE_WIDTH * 0.5;
+var PADDLE_BOUNCE_CURVATURE_PSEUDO_ANGLE = Math.PI / 6;
+var PADDLE_BOUNCE_MOVE_PSEUDO_ANGLE = Math.PI / 6;
 var UPPER_PADDLE_Y = 20;
 var UPPER_PADDLE_FACE_Y = UPPER_PADDLE_Y + PADDLE_HEIGHT * 0.5;
 var LOWER_PADDLE_Y = FIELD_HEIGHT - UPPER_PADDLE_Y;
@@ -50,6 +55,7 @@ function getTimeInMs()
 
 function mkStateFunc() {
   f = {};
+  f.isUpperPaddle = false;
   f.tOffset = 0;
   f.t0 = 0;
   f.tFreeze = 0;
@@ -82,24 +88,20 @@ function GameState(t0) {
   this.tCalc = t0;
 }
 
-GameState.prototype.rebaseStateFunc = function(t) {
-  var f = this.stateFunc;
-  var tx;
-  if(f.tFreeze == 0 || f.tFreeze > t) {
-    tx = t;
-  } else {
-    tx = f.tFreeze;
-  }
-  var dt = tx - f.t0;
-  f.upperPaddleX0 += dt * f.upperPaddleSpeed;
-  f.lowerPaddleX0 += dt * f.lowerPaddleSpeed;
-  f.ballX0 += Math.sin(f.ballA0) * dt * f.ballSpeed;
-  f.ballY0 += Math.cos(f.ballA0) * dt * f.ballSpeed;
-  f.t0 = t;
-  if(f.tMessageOut < tx) {
-    f.tMessageIn = 0;
-    f.tMessageOut = 0;
-    f.message = '';
+/**
+ * rebase state to tCalc as 0-positions
+ * need to call calculatePositions before
+ */
+GameState.prototype.rebaseStateFunc = function() {
+  this.stateFunc.t0 = this.tCalc;
+  this.stateFunc.upperPaddleX0 = this.upperPaddleX;
+  this.stateFunc.lowerPaddleX0 = this.lowerPaddleX;
+  this.stateFunc.ballX0 = this.ballX;
+  this.stateFunc.ballY0 = this.ballY;
+  if(this.stateFunc.tMessageOut < this.tCalc) {
+    this.stateFunc.tMessageIn = 0;
+    this.stateFunc.tMessageOut = 0;
+    this.stateFunc.message = '';
   }
 };
 
@@ -108,8 +110,17 @@ GameState.prototype.setBallToCenter = function() {
   this.stateFunc.ballY0 = FIELD_HEIGHT/2;
 }
 
-function bounce(axisAngle, moveAngle) {
+function wallBounce(axisAngle, moveAngle) {
   return (axisAngle * 2 - moveAngle) % PI2;
+}
+
+function paddleBounce(axisAngle, moveAngle, paddleOrientation, paddleSpeed, ballX, paddleX) {
+  var newAngle = axisAngle * 2 - moveAngle;
+  if(paddleSpeed > 0) newAngle -= paddleOrientation * PADDLE_BOUNCE_MOVE_PSEUDO_ANGLE;
+  else if(paddleSpeed < 0) newAngle += paddleOrientation * PADDLE_BOUNCE_MOVE_PSEUDO_ANGLE;
+  var ballRelativeToCenter = (ballX - paddleX) / PADDLE_WIDTH_H;
+  newAngle += paddleOrientation * ballRelativeToCenter * PADDLE_BOUNCE_CURVATURE_PSEUDO_ANGLE;
+  return newAngle % PI2;
 }
 
 GameState.prototype.calculateCollisions = function() {
@@ -187,7 +198,8 @@ GameState.prototype.ballTouchesLowerPaddle = function() {
 };
 
 GameState.prototype.handleCollisions = function() {
-  var newBallA0 = NaN; // will always be modified upon collision
+  // TODO this function smells
+  var newBallA0 = this.stateFunc.ballA0; // will always be modified upon collision
   var doSetBallToCenter = false;
   var message = '';
   var lowerPaddleScoreInc = 0; 
@@ -196,23 +208,25 @@ GameState.prototype.handleCollisions = function() {
   if((this.ballNewCollisions & BALL_COLLISION_TOP) != 0) {
     lowerPaddleScoreInc++;
     message = '+1 FOR LOWER PADDLE';
-    newBallA0 = bounce(PIH, this.stateFunc.ballA0);
+    newBallA0 = Math.PI;
     doSetBallToCenter = true;
   } else if((this.ballNewCollisions & BALL_COLLISION_BOTTOM) != 0) {
     upperPaddleScoreInc++;
     message = '+1 FOR UPPER PADDLE';
-    newBallA0 = bounce(PIH, this.stateFunc.ballA0);
+    newBallA0 = 0;
     doSetBallToCenter = true;
-  } else if((this.ballNewCollisions & (BALL_COLLISION_LOWER_PADDLE | BALL_COLLISION_UPPER_PADDLE)) != 0) {
-    newBallA0 = bounce(PIH, this.stateFunc.ballA0);
+  } else if((this.ballNewCollisions & BALL_COLLISION_LOWER_PADDLE) != 0) {
+    newBallA0 = paddleBounce(PIH, this.stateFunc.ballA0, 1, this.stateFunc.lowerPaddleSpeed, this.ballX, this.lowerPaddleX);
+  } else if((this.ballNewCollisions & BALL_COLLISION_UPPER_PADDLE) != 0) {
+    newBallA0 = paddleBounce(PIH, this.stateFunc.ballA0, -1, this.stateFunc.upperPaddleSpeed, this.ballX, this.upperPaddleX);
   }
   
   if((this.ballNewCollisions & (BALL_COLLISION_LEFT | BALL_COLLISION_RIGHT)) != 0) {
-    newBallA0 = bounce(PI2, this.stateFunc.ballA0);
+    newBallA0 = wallBounce(PI2, newBallA0);
   }
   
-  if(!isNaN(newBallA0)) { // something has happened TODO this smells
-    this.rebaseStateFunc(this.tCalc);
+  if(this.ballNewCollisions != 0) { // something has happened 
+    this.rebaseStateFunc();
     this.stateFunc.ballA0 = newBallA0;
     if(doSetBallToCenter) {
       this.setBallToCenter();
@@ -229,32 +243,38 @@ GameState.prototype.handleCollisions = function() {
 
 // TODO these functions look redundant
 GameState.prototype.upperPaddleMoveLeft = function(t) {
-  this.rebaseStateFunc(t);
+  this.calculatePositions(t);
+  this.rebaseStateFunc();
   this.stateFunc.upperPaddleSpeed = -PADDLE_INC;
 };
 
 GameState.prototype.upperPaddleMoveRight = function(t) {
-  this.rebaseStateFunc(t);
+  this.calculatePositions(t);
+  this.rebaseStateFunc();
   this.stateFunc.upperPaddleSpeed = PADDLE_INC;
 };
 
 GameState.prototype.upperPaddleStop = function(t) {
-  this.rebaseStateFunc(t);
+  this.calculatePositions(t);
+  this.rebaseStateFunc();
   this.stateFunc.upperPaddleSpeed = 0;
 };
 
 GameState.prototype.lowerPaddleMoveLeft = function(t) {
-  this.rebaseStateFunc(t);
+  this.calculatePositions(t);
+  this.rebaseStateFunc();
   this.stateFunc.lowerPaddleSpeed = -PADDLE_INC;
 };
 
 GameState.prototype.lowerPaddleMoveRight = function(t) {
-  this.rebaseStateFunc(t);
+  this.calculatePositions(t);
+  this.rebaseStateFunc();
   this.stateFunc.lowerPaddleSpeed = PADDLE_INC;
 };
 
 GameState.prototype.lowerPaddleStop = function(t) {
-  this.rebaseStateFunc(t);
+  this.calculatePositions(t);
+  this.rebaseStateFunc();
   this.stateFunc.lowerPaddleSpeed = 0;
 };
 
@@ -266,8 +286,15 @@ GameState.prototype.turn = function(t) {
 
 function PingPongClient(ctx) {
   this.ctx = ctx;
+  this.lastT = getTimeInMs();
+  this.frameDrawCount = 0;
+  this.fps = 0; // TODO automatic FPS adjustment
+  this.skipDrawCount = 0;
+  this.skips = 0;
   this.state = null;
-  this.isUpperPaddle = false; // TODO fetch from connection
+  
+  this.sock = null;
+  
   this.intervalId = null;
   var client = this;
   this.turnFunc = function() { client.turn(); };
@@ -283,6 +310,9 @@ PingPongClient.prototype.start = function() {
   if(this.intervalId !== null) {
     return;
   }
+  
+  this.sock = new SockJS(SOCK_URL_PREFIX);
+  
   // TODO connect
   this.state = new GameState(getTimeInMs()); // TODO update state func from connection
   
@@ -335,9 +365,10 @@ PingPongClient.prototype.drawStatusBar = function() {
   this.ctx.fillRect(0,480,640,20);
   this.ctx.font = '14px serif';
   this.ctx.fillStyle = 'black';
-  this.ctx.fillText('Score - Lower Paddle ('+ this.state.lowerPaddleX.toString()+'): '+this.state.stateFunc.lowerPaddleScore.toString()
-                    + '  Upper Paddle ('+ this.state.upperPaddleX.toString()+'): '+this.state.stateFunc.upperPaddleScore.toString()
-                    + ' Ball (x:'+this.state.ballX.toPrecision(4)+', y:'+this.state.ballY.toPrecision(4)+', coll:'+this.state.ballCollisionState+', newColl:'+this.state.ballNewCollisions+')',2,495);  
+  this.ctx.fillText('Score '+this.state.stateFunc.lowerPaddleScore.toString()
+                    + ':'+ this.state.stateFunc.upperPaddleScore.toString()
+                    + '  FPS: ' + this.fps.toString()
+                    + '  SkipsPS: ' + this.skips.toString(),2,495);  
 };
 
 PingPongClient.prototype.drawMessage = function() {
@@ -361,29 +392,32 @@ PingPongClient.prototype.draw = function() {
 };
 
 PingPongClient.prototype.sendCommand = function(command) {
+  var t = getTimeInMs();
   // TODO send command
-  if(this.isUpperPaddle) {
+  if(this.state.stateFunc.isUpperPaddle) {
     switch(command) {
       case CMD_LEFT_DOWN:
-        this.state.upperPaddleMoveLeft();
+        this.state.upperPaddleMoveLeft(t);
         break;
       case CMD_RIGHT_DOWN:
-        this.state.upperPaddleMoveRight();
+        this.state.upperPaddleMoveRight(t);
+        break;
       case CMD_LEFT_UP:
       case CMD_RIGHT_UP:
-        this.state.upperPaddleStop();
+        this.state.upperPaddleStop(t);
         break;
     }
   } else {
     switch(command) {
       case CMD_LEFT_DOWN:
-        this.state.lowerPaddleMoveLeft();
+        this.state.lowerPaddleMoveLeft(t);
         break;
       case CMD_RIGHT_DOWN:
-        this.state.lowerPaddleMoveRight();
+        this.state.lowerPaddleMoveRight(t);
+        break;
       case CMD_LEFT_UP:
       case CMD_RIGHT_UP:
-        this.state.lowerPaddleStop();
+        this.state.lowerPaddleStop(t);
         break;
     }
   }
@@ -416,7 +450,19 @@ PingPongClient.prototype.onkeydown = function(e) {
 PingPongClient.prototype.turn = function() {
   var t = getTimeInMs() + this.state.stateFunc.tOffset; // TODO set offset to time difference from server
   this.state.turn(t);
-  this.draw();
+  if((t % 1000) < (this.lastT % 1000)) {
+    this.fps = this.frameDrawCount;
+    this.skips = this.skipDrawCount;
+    this.skipDrawCount = 0;
+    this.frameDrawCount = 0;
+  }
+  if(t <= (this.lastT + SKIP_DRAW_THRESHOLD_MS)) {
+    this.draw();
+    this.frameDrawCount++;
+  } else {
+    this.skipDrawCount++;
+  }
+  this.lastT = t;
 };
   
 function clientMain() {
@@ -435,3 +481,5 @@ function clientMain() {
     client.stop();
   });
 }
+
+
