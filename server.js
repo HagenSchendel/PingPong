@@ -1,6 +1,7 @@
 "use strict";
 
 var _ = require('lodash');
+var _ = require('./www/pingpong');
 var sockjsServer = require('./sockjs-server');
 
 /**

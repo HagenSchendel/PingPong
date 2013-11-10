@@ -15,6 +15,8 @@ var PADDLE_HEIGHT = 10;
 var PADDLE_HEIGHT_H = PADDLE_HEIGHT * 0.5;
 var PADDLE_WIDTH = 50;
 var PADDLE_WIDTH_H = PADDLE_WIDTH * 0.5;
+var PADDLE_MIN_X = PADDLE_WIDTH_H;
+var PADDLE_MAX_X = FIELD_WIDTH - PADDLE_WIDTH_H;
 var PADDLE_BOUNCE_CURVATURE_PSEUDO_ANGLE = Math.PI / 6;
 var PADDLE_BOUNCE_MOVE_PSEUDO_ANGLE = Math.PI / 6;
 var UPPER_PADDLE_Y = 20;
@@ -55,7 +57,6 @@ function getTimeInMs()
 
 function mkStateFunc() {
   f = {};
-  f.isUpperPaddle = false;
   f.tOffset = 0;
   f.t0 = 0;
   f.tFreeze = 0;
@@ -105,11 +106,6 @@ GameState.prototype.rebaseStateFunc = function() {
   }
 };
 
-GameState.prototype.setBallToCenter = function() {
-  this.stateFunc.ballX0 = FIELD_WIDTH/2;
-  this.stateFunc.ballY0 = FIELD_HEIGHT/2;
-}
-
 function wallBounce(axisAngle, moveAngle) {
   return (axisAngle * 2 - moveAngle) % PI2;
 }
@@ -149,8 +145,8 @@ GameState.prototype.calculatePositions = function(t) {
   this.tCalc = t;
   var dt = t - this.stateFunc.t0;
   if(dt < 0) { console.log('t < t0'); dt = 0; }
-  this.upperPaddleX = this.stateFunc.upperPaddleX0 + dt * this.stateFunc.upperPaddleSpeed;
-  this.lowerPaddleX = this.stateFunc.lowerPaddleX0 + dt * this.stateFunc.lowerPaddleSpeed;
+  this.upperPaddleX = Math.min(Math.max(this.stateFunc.upperPaddleX0 + dt * this.stateFunc.upperPaddleSpeed, PADDLE_MIN_X), PADDLE_MAX_X); 
+  this.lowerPaddleX = Math.min(Math.max(this.stateFunc.lowerPaddleX0 + dt * this.stateFunc.lowerPaddleSpeed, PADDLE_MIN_X), PADDLE_MAX_X);
   this.ballX = this.stateFunc.ballX0 + Math.sin(this.stateFunc.ballA0) * dt * this.stateFunc.ballSpeed;
   this.ballY = this.stateFunc.ballY0 - Math.cos(this.stateFunc.ballA0) * dt * this.stateFunc.ballSpeed;
   
@@ -200,7 +196,8 @@ GameState.prototype.ballTouchesLowerPaddle = function() {
 GameState.prototype.handleCollisions = function() {
   // TODO this function smells
   var newBallA0 = this.stateFunc.ballA0; // will always be modified upon collision
-  var doSetBallToCenter = false;
+  var newBallX0 = this.ballX;
+  var newBallY0 = this.ballY;
   var message = '';
   var lowerPaddleScoreInc = 0; 
   var upperPaddleScoreInc = 0;
@@ -209,12 +206,14 @@ GameState.prototype.handleCollisions = function() {
     lowerPaddleScoreInc++;
     message = '+1 FOR LOWER PADDLE';
     newBallA0 = Math.PI;
-    doSetBallToCenter = true;
+    newBallX0 = FIELD_WIDTH / 2;
+    newBallY0 = UPPER_PADDLE_FACE_Y + BALL_RADIUS;
   } else if((this.ballNewCollisions & BALL_COLLISION_BOTTOM) != 0) {
     upperPaddleScoreInc++;
     message = '+1 FOR UPPER PADDLE';
     newBallA0 = 0;
-    doSetBallToCenter = true;
+    newBallX0 = FIELD_WIDTH / 2;
+    newBallY0 = LOWER_PADDLE_FACE_Y - BALL_RADIUS;
   } else if((this.ballNewCollisions & BALL_COLLISION_LOWER_PADDLE) != 0) {
     newBallA0 = paddleBounce(PIH, this.stateFunc.ballA0, 1, this.stateFunc.lowerPaddleSpeed, this.ballX, this.lowerPaddleX);
   } else if((this.ballNewCollisions & BALL_COLLISION_UPPER_PADDLE) != 0) {
@@ -228,9 +227,9 @@ GameState.prototype.handleCollisions = function() {
   if(this.ballNewCollisions != 0) { // something has happened 
     this.rebaseStateFunc();
     this.stateFunc.ballA0 = newBallA0;
-    if(doSetBallToCenter) {
-      this.setBallToCenter();
-    }
+    this.stateFunc.ballX0 = newBallX0;
+    this.stateFunc.ballY0 = newBallY0;
+    
     if(message != '') {
       this.stateFunc.tMessageIn = this.tCalc;
       this.stateFunc.tMessageOut = this.tCalc + MESSAGE_DURATION_MS;
@@ -292,7 +291,7 @@ function PingPongClient(ctx) {
   this.skipDrawCount = 0;
   this.skips = 0;
   this.state = null;
-  
+  this.isUpperPaddle = false;
   this.sock = null;
   
   this.intervalId = null;
@@ -313,12 +312,32 @@ PingPongClient.prototype.start = function() {
   
   this.sock = new SockJS(SOCK_URL_PREFIX);
   
-  // TODO connect
-  this.state = new GameState(getTimeInMs()); // TODO update state func from connection
+  var client = this;
   
-  window.addEventListener('keydown',this.onkeydownFunc,false);
-  window.addEventListener('keyup',this.onkeyupFunc,false);
-  this.intervalId = setInterval(this.turnFunc, INTERVAL_MS);
+  this.sock.onopen = function() {
+    client.state = new GameState(getTimeInMs()); // TODO update state func from connection
+  
+    window.addEventListener('keydown',client.onkeydownFunc,false);
+    window.addEventListener('keyup',client.onkeyupFunc,false);
+    this.intervalId = setInterval(client.turnFunc, INTERVAL_MS);
+  };
+  
+  this.sock.onclose = function() {
+    client.stop();
+  };
+  
+  this.sock.onmessage = function(e) {
+    var dataObj = JSON.parse(e.data);
+    if (typeof dataObj === "undefined" || dataObj === null) {
+        console.log('Error parsing data from server!');
+    }
+    if ('u' in dataObj) {
+      client.isUpperPaddle = dataObj.u;
+    }
+    if ('f' in dataObj) {
+      client.state.stateFunc = dataObj.f;
+    }
+  };
 };
 
 PingPongClient.prototype.stop = function() {
@@ -326,7 +345,8 @@ PingPongClient.prototype.stop = function() {
     return;
   }
   
-  // TODO disconnect
+  delete this.sock;
+  this.sock = null;
   
   clearInterval(this.intervalId);
   this.intervalId = null;
@@ -394,7 +414,7 @@ PingPongClient.prototype.draw = function() {
 PingPongClient.prototype.sendCommand = function(command) {
   var t = getTimeInMs();
   // TODO send command
-  if(this.state.stateFunc.isUpperPaddle) {
+  if(this.isUpperPaddle) {
     switch(command) {
       case CMD_LEFT_DOWN:
         this.state.upperPaddleMoveLeft(t);
